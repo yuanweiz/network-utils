@@ -3,7 +3,7 @@
 #include "Logging.h"
 
 Channel::Channel(Eventloop* loop, int fd)
-    :fd_(fd), loop_(loop),events_(0)
+    :fd_(fd),idx_(-1),loop_(loop),events_(0)
 {
     loop_->add(this);
 }
@@ -31,12 +31,11 @@ void Channel::enableWrite(){
 }
 
 bool Channel::readable(){
-    return revents_ & POLLIN;
+    return 0!=(revents_ & POLLIN);
 }
 
 bool Channel::writable(){
-    int val= revents_ & POLLOUT;
-    return val;
+    return 0!=(revents_ & POLLOUT);
 }
 
 void Channel::handleRead(){

@@ -8,12 +8,15 @@ class Channel;
 class Eventloop{
 public:
     using Functor = std::function<void()>;
+    Eventloop();
     void loop();
     void callFunc(const Functor&);
     void add(Channel*);
     void unregister(Channel*);
     ~Eventloop();
 private: 
+    bool polling_; //for debug use
+
     void fillPollfds();
     std::vector<Channel*>  channels_;
     

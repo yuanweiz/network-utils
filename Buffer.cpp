@@ -2,6 +2,7 @@
 #include <assert.h>
 #include "Buffer.h"
 OnStackBuffer::OnStackBuffer() :start_(0), end_(0) {
+    //bzero(data_,sizeof(data_));
 }
 char * OnStackBuffer::data() {
 	return data_;

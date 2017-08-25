@@ -4,6 +4,7 @@
 #include <vector>
 #include <stdio.h>
 #include "StreamReader.h"
+#include <memory.h>
 class StringView {
 public:
     StringView( char* c, size_t sz)
@@ -31,7 +32,7 @@ public:
     size_t readFile(FILE*);
 private:
 	size_t start_, end_;
-	char data_[65536];
+	char data_[1024];
 };
 
 

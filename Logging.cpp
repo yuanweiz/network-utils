@@ -3,10 +3,12 @@
 #include <string.h>
 #include <algorithm>
 #include <type_traits>
+#include <unistd.h>
 
 const char* logLevelStr[]{
     "[ERROR ]",
 	"[TRACE ]",
+	"[INFO  ]",
 	"[DEBUG ]",
 	"[VERB  ]",
 };
@@ -124,10 +126,12 @@ Logger::Logger(const char * file, int lineno, int logLevel)
         << ":" << lineno << ":" ;
 }
 Logger::~Logger(){
-    stream() << '\n';
-    char fmt[32];
-    snprintf(fmt,sizeof(fmt),"%%%lds", stream().size());
-    printf(fmt,stream().data());
+    stream() << "\n";
+    //auto n=printf("%s",static_cast<char*>(stream().data()));
+    ::write(1,stream().data(),stream().size());
+    //char fmt[32];
+    //snprintf(fmt,sizeof(fmt),"%%%lds", stream().size());
+    //printf(fmt,stream().data());
     //::snprintf(buffer_.peek(), buffer_.readable(),"%s");
 }
 int Logger::level = Logger::LogVerbose;

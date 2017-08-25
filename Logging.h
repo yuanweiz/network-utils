@@ -30,7 +30,7 @@ public:
 	Logger(const char * file, int lineno, int logLevel);
 	static void setLevel(int l) { level = l; }
 	static int getLevel() { return level; }
-	enum {LogError,LogTrace, LogDebug, LogVerbose};
+	enum {LogError,LogTrace,LogInfo, LogDebug, LogVerbose};
 	static int level;
     ~Logger();
     LogStream& stream(){return stream_;}
@@ -41,6 +41,8 @@ private:
 #define LOG_ERROR Logger(__FILE__, __LINE__, Logger::LogError).stream()
 #define LOG_DEBUG if (Logger::getLevel() >= Logger::LogDebug)\
 	Logger(__FILE__, __LINE__, Logger::LogDebug).stream()
+#define LOG_INFO if (Logger::getLevel() >= Logger::LogInfo)\
+	Logger(__FILE__, __LINE__, Logger::LogInfo).stream()
 #define LOG_VERBOSE if (Logger::getLevel() >= Logger::LogVerbose)\
 	Logger(__FILE__, __LINE__, Logger::LogVerbose).stream()
 #define LOG_TRACE if (Logger::getLevel() >= Logger::LogTrace)\
