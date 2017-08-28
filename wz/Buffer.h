@@ -3,8 +3,8 @@
 #include <sys/types.h>
 #include <vector>
 #include <stdio.h>
-#include "StreamReader.h"
 #include <memory.h>
+#include <wz/StreamReader.h>
 class StringView {
 public:
     StringView( char* c, size_t sz)

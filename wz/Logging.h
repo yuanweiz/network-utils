@@ -3,7 +3,7 @@
 #include <string>
 #include <stdint.h>
 #include <functional>
-#include "Buffer.h"
+#include <wz/Buffer.h>
 
 class LogStream {
 public:

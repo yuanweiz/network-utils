@@ -1,8 +1,8 @@
-#include "Logging.h"
-#include "Time.h"
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include "wz/Logging.h"
+#include "wz/Time.h"
 int main (){
     //close(1);
     int fd = 1;//=open("/dev/null", O_RDWR);
