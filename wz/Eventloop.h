@@ -8,29 +8,29 @@
 //extern "C" struct pollfd;
 class Channel;
 class TimerManager;
+class Multiplexer;
 class Eventloop{
 public:
-    using Functor = std::function<void()>;
+    using Func = std::function<void()>;
     Eventloop();
     void loop();
     void quit();
-    void callFunc(const Functor&);
+    void callFunc(const Func&);
     void add(Channel*);
     void unregister(Channel*);
     ~Eventloop();
-    TimerUUID runAfter(double, const Functor&);
-    TimerUUID runEvery(double, const Functor&);
+    TimerUUID runAfter(double, const Func&);
+    TimerUUID runEvery(double, const Func&);
     void cancelTimer(const TimerUUID&);
+    void updateChannel(Channel*);
 private: 
     bool polling_; //for debug use
     bool running_;
-    void fillPollfds();
-    std::vector<Channel*>  channels_;
     
     //pollfds: used by fillPollfds() to reduce construction/destruction
     //of std::vector
-    std::vector<struct pollfd> pollfds_;
-    std::vector<Functor> funcs_;
+    std::vector<Func> funcs_;
+    std::unique_ptr<Multiplexer> multiplexer_;
     std::unique_ptr<TimerManager> timerManager_;
 };
 

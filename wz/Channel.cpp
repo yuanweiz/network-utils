@@ -13,21 +13,26 @@ void Channel::set_revents(int ev){revents_=ev;}
 
 void Channel::disableRead(){
     events_ &= (~POLLIN);
+    update();
 }
 void Channel::disableAll(){
     events_ = 0;
+    update();
 }
 
 void Channel::disableWrite(){
     events_ &= (~POLLOUT);
+    update();
 }
 
 void Channel::enableRead(){
     events_ |= POLLIN;
+    update();
 }
 
 void Channel::enableWrite(){
     events_ |= POLLOUT;
+    update();
 }
 
 bool Channel::readable(){
@@ -73,6 +78,9 @@ std::string Channel::reventString(){
     return ::eventString_(revents_);
 }
 
+void Channel::update(){
+    loop_->updateChannel(this);
+}
 Channel::~Channel(){
     if (loop_){
         loop_->unregister(this);
