@@ -2,6 +2,7 @@
 #define __LOGGING_H
 #include <string>
 #include <stdint.h>
+#include <functional>
 #include "Buffer.h"
 
 class LogStream {
@@ -34,6 +35,8 @@ public:
 	static int level;
     ~Logger();
     LogStream& stream(){return stream_;}
+    using FinishFunc = void (*)(LogStream&); 
+    static FinishFunc g_finish;
 private:
     LogStream stream_;
 };

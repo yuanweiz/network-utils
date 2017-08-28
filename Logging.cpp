@@ -4,6 +4,10 @@
 #include <algorithm>
 #include <type_traits>
 #include <unistd.h>
+#include "Time.h"
+
+Logger::FinishFunc Logger::g_finish = nullptr;
+int Logger::level = Logger::LogVerbose;
 
 const char* logLevelStr[]{
     "[ERROR ]",
@@ -12,6 +16,7 @@ const char* logLevelStr[]{
 	"[DEBUG ]",
 	"[VERB  ]",
 };
+
 
 void* LogStream::data(){
     return buffer_.peek();
@@ -117,7 +122,10 @@ LogStream & LogStream::operator << (const std::string & s)
 //Logger
 Logger::Logger(const char * file, int lineno, int logLevel)
 {
-	stream() << logLevelStr[logLevel] << 
+	stream() << logLevelStr[logLevel] <<
+        detail::formatTime(Time::now())
+        //Time::now().toString() 
+        << " "<<
 #ifdef _WIN32
         ::strrchr(file,'\\')+1 
 #else 
@@ -125,14 +133,14 @@ Logger::Logger(const char * file, int lineno, int logLevel)
 #endif
         << ":" << lineno << ":" ;
 }
+
 Logger::~Logger(){
     stream() << "\n";
-    //auto n=printf("%s",static_cast<char*>(stream().data()));
-    ::write(1,stream().data(),stream().size());
-    //char fmt[32];
-    //snprintf(fmt,sizeof(fmt),"%%%lds", stream().size());
-    //printf(fmt,stream().data());
-    //::snprintf(buffer_.peek(), buffer_.readable(),"%s");
+    if (g_finish){
+        g_finish(stream());
+    }
+    else {
+        //default cleanup func
+        ::write(1,stream().data(),stream().size());
+    }
 }
-int Logger::level = Logger::LogVerbose;
-

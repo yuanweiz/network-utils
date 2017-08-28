@@ -1,11 +1,12 @@
 #ifndef __CHANNEL_H
 #define __CHANNEL_H
 #include <functional>
+#include "Context.h"
 // Channel: wrapper class for posix pollfd/ epoll_event
 // it introduces "another layer of indirection"
 // this class doesn't own fd, Eventloop doesn't own Channel
 class Eventloop;
-class Channel{
+class Channel : public EnableContext{
 public:
     using Callback= std::function<void()>;
     Channel(Eventloop* loop, int fd);

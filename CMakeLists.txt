@@ -1,7 +1,8 @@
 project (network CXX)
 add_library(net 
     Logging.cpp Exception.cpp Buffer.cpp 
-    Eventloop.cpp Channel.cpp Server.cpp System.cpp)
+    Eventloop.cpp Channel.cpp Server.cpp 
+    Time.cpp System.cpp)
 
 add_executable (main main.cpp)
 target_link_libraries ( main net)
