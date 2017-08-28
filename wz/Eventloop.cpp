@@ -3,12 +3,30 @@
 #include <errno.h>
 #include <unistd.h>
 #include <assert.h>
-#include "Logging.h"
-#include "Eventloop.h"
-#include "Channel.h"
+#include <wz/Logging.h>
+#include <wz/Eventloop.h>
+#include <wz/Channel.h>
+#include <wz/TimerManager.h>
 
-Eventloop::Eventloop(){
+Eventloop::Eventloop()
+    : timerManager_(new TimerManager(this))
+{
     polling_=false;
+    running_=true;
+}
+
+void Eventloop::quit(){
+    running_=false;
+}
+
+TimerUUID Eventloop::runAfter(double interval, const Functor & func){
+    return timerManager_->add(Time::fromNow(interval),func,-1.0);
+}
+TimerUUID Eventloop::runEvery(double interval, const Functor& func){
+    return timerManager_->add(Time::fromNow(interval),func,interval);
+}
+void Eventloop::cancelTimer(const TimerUUID & uuid){
+    timerManager_->cancel(uuid);
 }
 
 Eventloop::~Eventloop(){
@@ -23,7 +41,7 @@ void Eventloop::callFunc(const Functor& f){
 }
 
 void Eventloop::loop(){
-    while (true){
+    while (running_){
         fillPollfds();
         assert(channels_.size() == pollfds_.size());
         int num = ::poll(pollfds_.data(), pollfds_.size(), -1);

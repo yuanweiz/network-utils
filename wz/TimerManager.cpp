@@ -2,16 +2,23 @@
 #include <unistd.h>
 #include <assert.h>
 #include <algorithm>
+#include <string.h>
 #include "TimerManager.h"
+#include <wz/Logging.h>
 using namespace std;
 
 class Timer{
 public:
     using Func=std::function<void()>;
-    Timer(Time,const Func&,double,int64_t);
+    explicit Timer(Time t,const Func&func,double interval,int64_t uuid)
+        :time_(t),func_(func),interval_(interval*Time::million),uuid_(uuid)
+    {
+        if(interval_<=0) interval_=-1;
+    }
     Time time()const{return time_;}
     const Func& func(){return func_;}
     bool repeated() {return interval_>0;}
+    int64_t interval(){return interval_;}
     int64_t uuid(){return uuid_;}
 private:
     Time time_;
@@ -20,6 +27,7 @@ private:
     int64_t uuid_;
 };
 
+void updateFd(int fd, Time time);
 TimerManager::TimerManager(Eventloop* loop)
     :loop_(loop),
     fd_(timerfd_create(CLOCK_MONOTONIC,
@@ -32,6 +40,35 @@ TimerManager::TimerManager(Eventloop* loop)
     channel_->setReadCallback([this](){onReadable();});
 }
 
+bool TimerManager::dequeueExpiredTimers(){
+    expiredTimers_.clear();
+    Time now=Time::now();
+    Entry entry = std::make_pair(now,nullptr); //Notice: which one is correct?
+    //LOG_DEBUG << "expiration="<< now.toString();
+    //LOG_DEBUG << "expiredTimers.size()==" << expiredTimers_.size();
+    //std::pair<Time,Timer*> entry = std::make_pair(now,reinterpret_cast<Timer*>(UINTPTR_MAX));
+    auto it=timers_.lower_bound(entry);
+    if (it==timers_.begin()){
+        return false;
+    }
+    if (it!=timers_.end()){
+        //LOG_DEBUG << "next timer="<< it->second->time().toString();
+    }
+    //make a copy, because func()() may remove timer from set, resulting in a dangle pointer access
+    std::copy(timers_.begin(), it, std::back_inserter(expiredTimers_));
+    timers_.erase(timers_.begin(), it);
+    assert(!expiredTimers_.empty());
+    return true;
+}
+
+void TimerManager::handleCallbacks(){
+    handlingCallbacks_ = true;
+    for (auto & e: expiredTimers_){
+        LOG_DEBUG  << "(Timer* )" << e.second;
+        e.second->func()();
+    }
+    handlingCallbacks_ = false;
+}
 
 void TimerManager::onReadable(){
     uint64_t ret;
@@ -42,37 +79,81 @@ void TimerManager::onReadable(){
     }
     //invariant
     assert( timers_.size() == validTimers_.size());
-
-    Time now=Time::now();
-    std::vector<Entry> expiredTimers;
-    Entry entry = std::make_pair(now,nullptr); //Notice: which one is correct?
-    {
-    //std::pair<Time,Timer*> entry = std::make_pair(now,reinterpret_cast<Timer*>(UINTPTR_MAX));
-    auto it=timers_.lower_bound(entry);
-    //make a copy, because func()() may remove timer from set, resulting in a dangle pointer access
-    std::copy(timers_.begin(), it, std::back_inserter(expiredTimers));
+    dequeueExpiredTimers();
+    if (expiredTimers_.empty()){
+        LOG_DEBUG << "warning: found no expired timers";
     }
-    timers_.erase(timers_.begin(), timers_.end());
-
-    handlingCallbacks_ = true;
-    for (auto & e: expiredTimers){
-        e.second->func()();
+    else {
+        if (!timers_.empty()){
+            updateFd(fd_, timers_.begin()->second->time());
+        }
+        else {
+            LOG_TRACE << "all timers expired";
+        }
     }
-    handlingCallbacks_ = false;
+    handleCallbacks();
+    //if repeated()
+    std::vector<Timer*> repeatedTimers;
+    for (auto &e:expiredTimers_){
+        auto mapIt=validTimers_.find(e.second->uuid());
+        assert(mapIt!= validTimers_.end());
+        Timer * timer = mapIt->second;
+        int64_t interval = timer->interval();
+        Time nextTurn = timer->time().add(interval);
+        if (timer ->repeated()){
+            repeatedTimers.push_back(
+                    new Timer( nextTurn, timer->func(),
+                        interval*1.0/Time::million, TimerManager::genUUID())
+                    );
+        }
+        delete timer;
+        validTimers_.erase(mapIt);
+    }
+
     assert( timers_.size() == validTimers_.size());
+    //for repeated timers, insert it back
+    for (Timer* timer: repeatedTimers){
+        this->add(timer);
+    }
+}
+
+void updateFd(int fd, Time time){
+    struct itimerspec spec;
+    ::bzero(&spec,sizeof(spec));
+    int64_t delay = time.usecSinceEpoch()- Time::now().usecSinceEpoch();
+    spec.it_value.tv_sec = static_cast<time_t>(delay / Time::million);
+    spec.it_value.tv_nsec = static_cast<long>(1000*(delay  % Time::million));
+    if (spec.it_value.tv_nsec < 0 ) spec.it_value.tv_nsec = 100;
+    LOG_DEBUG << "spec: tv_sec="<< spec.it_value.tv_sec
+        << ", tv_nsec=" << spec.it_value.tv_nsec;
+    ::timerfd_settime(fd, 0, &spec, nullptr);
 }
 
 TimerUUID TimerManager::add (Time time,const Func&func, double intervalSeconds){
-    int64_t intervalInUsec = intervalSeconds * 1000000;
-    if (intervalInUsec <= 0)
-        intervalInUsec = -1;
     int64_t uuid=genUUID();
-    Timer * timer = new Timer(time,func,intervalInUsec,uuid);
-    //::timerfd_settime(fd_, 
+    Timer * timer = new Timer(time,func,intervalSeconds,uuid);
+    return this->add(timer);
+}
+
+TimerUUID TimerManager::add (Timer* timer){
+    int64_t uuid = timer->uuid();
+    Time time = timer->time();
+    LOG_TRACE << "TimerManager::add( time="<<time.toString() 
+        << ", interval=" << 1.0*timer->interval() /Time::million
+        << "seconds )";
+    bool needUpdateFd = false;
+    auto it = timers_.begin();
+    if ( it==timers_.end() ||  time < it->second->time() ){
+        needUpdateFd = true;
+    }
+    if (needUpdateFd){
+        updateFd(fd_, time);
+    }
     //FIXME: unique_ptr?
     timers_.insert({time,timer});
     assert(validTimers_.find(uuid)==validTimers_.end());
     validTimers_[uuid]=timer;
+    assert(timers_.size()== validTimers_.size());
     return TimerUUID(uuid,timer);
 }
 

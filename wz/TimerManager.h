@@ -6,17 +6,9 @@
 #include "Time.h"
 #include "Channel.h"
 #include "Eventloop.h"
+#include <wz/TimerUUID.h>
 
 class Timer; //opaque class
-
-class TimerUUID {
-    friend class TimerManager;
-private:
-    TimerUUID(int64_t uuid, Timer* timer):uuid_(uuid),timer_(timer){}
-    int64_t uuid_;
-    Timer * timer_; //redundant field, for debug use
-};
-
 class TimerManager{
 public:
     using Func=std::function<void()>;
@@ -25,7 +17,10 @@ public:
     void cancel (const TimerUUID &);
 private:
     using Entry = std::pair<Time,Timer*>;
+    TimerUUID add (Timer*);
     void onReadable();
+    bool dequeueExpiredTimers();
+    void handleCallbacks();
     int64_t genUUID();
     //std::deque<std::unique_ptr<Timer>> timers_;
     std::set< std::pair<Time,Timer*>> timers_;
@@ -34,6 +29,7 @@ private:
     int fd_;
     int64_t lastUUID_;
     std::unique_ptr<Channel> channel_;
+    std::vector<Entry> expiredTimers_;
     //for debug use;
     bool handlingCallbacks_;
 };

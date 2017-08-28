@@ -10,9 +10,9 @@ __thread char timeStr[32];
 __thread time_t cachedSecond=0;
 __thread int secPartLen=-1;
 char* formatTime(Time timeStamp){
-    auto epochInUsec_ = timeStamp.epochInUsec();
-    int64_t usec = epochInUsec_ % million;
-    int64_t sec_ = epochInUsec_ / million;
+    auto usecSinceEpoch_ = timeStamp.usecSinceEpoch();
+    int64_t usec = usecSinceEpoch_ % million;
+    int64_t sec_ = usecSinceEpoch_ / million;
     time_t sec = static_cast<time_t>(sec_);
     //copied from muduo/base/Timestamp.cc
     if (cachedSecond != sec){
@@ -41,8 +41,13 @@ Time Time::now(){
     return Time(sec * detail::million + usec );
 }
 
+Time Time::fromNow(double sec){
+    int64_t lag = sec * detail::million;
+    return Time::now().add(lag);
+}
+
 Time& Time::add(int64_t diff){
-    epochInUsec_+=diff;
+    usecSinceEpoch_+=diff;
     return *this;
 }
 
