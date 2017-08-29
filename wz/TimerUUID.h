@@ -3,7 +3,11 @@
 #include <sys/types.h>
 class Timer; //opaque class
 class TimerUUID {
+public:
     friend class TimerManager; //opache class
+    bool operator< (const TimerUUID&rhs)const {
+        return uuid_ < rhs.uuid_;
+    }
 private:
     TimerUUID(int64_t uuid, Timer* timer):uuid_(uuid),timer_(timer){}
     int64_t uuid_;

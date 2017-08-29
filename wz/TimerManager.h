@@ -16,6 +16,7 @@ public:
     TimerUUID add (Time ,const Func&, double intervalSeconds);
     void cancel (const TimerUUID &);
 private:
+    class LogStream;
     using Entry = std::pair<Time,Timer*>;
     TimerUUID add (Timer*);
     void onReadable();
@@ -30,6 +31,7 @@ private:
     int64_t lastUUID_;
     std::unique_ptr<Channel> channel_;
     std::vector<Entry> expiredTimers_;
+    std::set<TimerUUID> tobeCancelled_;
     //for debug use;
     bool handlingCallbacks_;
 };

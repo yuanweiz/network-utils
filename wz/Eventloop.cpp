@@ -26,7 +26,7 @@ TimerUUID Eventloop::runAfter(double interval, const Func & func){
     return timerManager_->add(Time::fromNow(interval),func,-1.0);
 }
 TimerUUID Eventloop::runEvery(double interval, const Func& func){
-    return timerManager_->add(Time::fromNow(interval),func,interval);
+    return timerManager_->add(Time::now(),func,interval);
 }
 void Eventloop::cancelTimer(const TimerUUID & uuid){
     timerManager_->cancel(uuid);

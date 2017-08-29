@@ -62,14 +62,21 @@ bool TimerManager::dequeueExpiredTimers(){
 }
 
 void TimerManager::handleCallbacks(){
+    assert(tobeCancelled_.empty());
     handlingCallbacks_ = true;
     for (auto & e: expiredTimers_){
-        LOG_DEBUG  << "(Timer* )" << e.second;
         e.second->func()();
     }
     handlingCallbacks_ = false;
 }
 
+// most complicated part in TimerManager,
+// callback of a timer may remove 
+// expired/unexpired timers, or even itself.
+// if handlingCallbacks_ is true, 
+// TimerManager::cancel() will remove 
+// the timer, otherwise just append it to 
+// toBeCancelled_ vector
 void TimerManager::onReadable(){
     uint64_t ret;
     auto sz=::read(fd_,&ret,sizeof(ret));
@@ -81,7 +88,7 @@ void TimerManager::onReadable(){
     assert( timers_.size() == validTimers_.size());
     dequeueExpiredTimers();
     if (expiredTimers_.empty()){
-        LOG_DEBUG << "warning: found no expired timers";
+        //LOG_DEBUG << "warning: found no expired timers";
     }
     else {
         if (!timers_.empty()){
@@ -91,7 +98,9 @@ void TimerManager::onReadable(){
             LOG_TRACE << "all timers expired";
         }
     }
+    tobeCancelled_.clear();
     handleCallbacks();
+
     //if repeated()
     std::vector<Timer*> repeatedTimers;
     for (auto &e:expiredTimers_){
@@ -100,7 +109,9 @@ void TimerManager::onReadable(){
         Timer * timer = mapIt->second;
         int64_t interval = timer->interval();
         Time nextTurn = timer->time().add(interval);
-        if (timer ->repeated()){
+        if (timer ->repeated() && 
+                tobeCancelled_.find(TimerUUID(timer->uuid(),timer))== tobeCancelled_.end()){
+            //LOG_DEBUG <<"insert Timer "<< timer<<" back";
             repeatedTimers.push_back(
                     new Timer( nextTurn, timer->func(),
                         interval*1.0/Time::million, TimerManager::genUUID())
@@ -111,9 +122,12 @@ void TimerManager::onReadable(){
     }
 
     assert( timers_.size() == validTimers_.size());
+    for (auto & id: tobeCancelled_){
+        this->cancel(id);
+    }
     //for repeated timers, insert it back
     for (Timer* timer: repeatedTimers){
-        this->add(timer);
+        this->add(timer); //insert it back
     }
 }
 
@@ -124,8 +138,8 @@ void updateFd(int fd, Time time){
     spec.it_value.tv_sec = static_cast<time_t>(delay / Time::million);
     spec.it_value.tv_nsec = static_cast<long>(1000*(delay  % Time::million));
     if (spec.it_value.tv_nsec < 0 ) spec.it_value.tv_nsec = 100;
-    LOG_DEBUG << "spec: tv_sec="<< spec.it_value.tv_sec
-        << ", tv_nsec=" << spec.it_value.tv_nsec;
+    //LOG_DEBUG << "spec: tv_sec="<< spec.it_value.tv_sec
+    //    << ", tv_nsec=" << spec.it_value.tv_nsec;
     ::timerfd_settime(fd, 0, &spec, nullptr);
 }
 
@@ -158,19 +172,37 @@ TimerUUID TimerManager::add (Timer* timer){
 }
 
 void TimerManager::cancel (const TimerUUID& timerId){
-    int64_t uuid = timerId.uuid_;
-    auto it = validTimers_.find(uuid);
-    if (it==validTimers_.end()){
-        //already removed somewhere else
-        return;
+    if (!handlingCallbacks_){
+        //LOG_DEBUG << "canceling when handlingCallbacks_==false";
+        int64_t uuid = timerId.uuid_;
+        assert( timers_.size() == validTimers_.size());
+        auto it = validTimers_.find(uuid);
+        if (it==validTimers_.end()){
+            //LOG_DEBUG << "TimerUUID(Timer*="<< timerId.timer_
+            //    << ", uuid="<<timerId.uuid_
+            //    << ") already removed elsewhere";
+            return;
+        }
+        validTimers_.erase(it);
+        Timer* timer = it->second;
+        assert(timer == timerId.timer_);
+        Entry e = make_pair(timer->time(), timer);
+        auto setIter = timers_.find(e);
+        assert (setIter!=timers_.end());
+        bool needUpdateFd=false;
+        if (setIter == timers_.begin()){
+            needUpdateFd=true;
+        }
+        setIter=timers_.erase(setIter);
+        if (needUpdateFd && !validTimers_.empty()){
+            updateFd(fd_,setIter->second->time());
+        }
+        assert( timers_.size() == validTimers_.size());
     }
-    Timer* timer = it->second;
-    assert(timer == timerId.timer_);
-    Entry e = make_pair(timer->time(), timer);
-    auto setIter = timers_.find(e);
-    assert (setIter!=timers_.end());
-    timers_.erase(setIter);
-    assert( timers_.size() == validTimers_.size());
+    else {
+        tobeCancelled_.insert(timerId);
+        //LOG_DEBUG << "delay canceling procedure";
+    }
 }
 
 int64_t TimerManager::genUUID(){
