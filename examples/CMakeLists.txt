@@ -15,3 +15,6 @@ target_link_libraries (chargenserver wz)
 
 add_executable ( logging_profile logging_profile.cpp)
 target_link_libraries (logging_profile wz)
+
+add_executable ( test_timer test_timer.cpp)
+target_link_libraries (test_timer wz)

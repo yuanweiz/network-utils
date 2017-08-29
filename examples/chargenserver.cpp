@@ -73,7 +73,7 @@ void MyServer::onNewConnection(){
     pChan->enableWrite();
     pChan->setWriteCallback([this,fd](){onPeerWritable(fd);});
     pChan->ctx.i64[0]=0;
-    pChan->ctx.i64[1]=Time::now().epochInUsec();
+    pChan->ctx.i64[1]=Time::now().usecSinceEpoch();
     auto res = peers_.insert (std::make_pair(fd,pChan));
     assert(res.second);
 }
@@ -103,7 +103,7 @@ void MyServer::onPeerWritable(int fd){
     else {
         totalBytes += ret;
     }
-    int64_t now=Time::now().epochInUsec();
+    int64_t now=Time::now().usecSinceEpoch();
     double speed = 1000000.0 * totalBytes / (now - startTime);
     LOG_DEBUG << "speed: " << speed << "bytes/s";
 }

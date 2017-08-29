@@ -16,7 +16,6 @@ public:
     void enableWrite();
     void disableWrite();
     void disableAll();
-    void update();
     bool readable();
     bool writable();
     int events(){return events_;}
@@ -30,6 +29,7 @@ public:
     std::string reventString();
     std::string eventString();
 private:
+    void update();
     void handleRead();
     void handleWrite();
     int fd_;
