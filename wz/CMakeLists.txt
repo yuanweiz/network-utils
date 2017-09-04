@@ -4,9 +4,12 @@ set (SRC
     Eventloop.cpp Channel.cpp Server.cpp 
     Time.cpp System.cpp Multiplexer.cpp
     TimerManager.cpp
+    Thread.cpp
+    Mutex.cpp
     )
 
 add_library(wz ${SRC})
+target_link_libraries(wz pthread)
 
 #installation related
 set (USER_VISIBLE_HEADERS Logging.h Exception.h Buffer.h Time.h StreamReader.h)
