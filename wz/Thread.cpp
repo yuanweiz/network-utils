@@ -2,8 +2,11 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
+#include <sys/prctl.h>
 #include <unistd.h>
 #include <string>
+#include <assert.h>
+#include <wz/Logging.h>
 using namespace std;
 __thread pid_t t_tid=0;
 namespace detail{
@@ -52,12 +55,16 @@ bool Thread::isCurrentThread()const{
 }
 
 Thread::~Thread(){
-    delete data_;
+    assert(e_state_ == Running || finished());
+    ::pthread_detach(thread_);
+    LOG_DEBUG << "detached thread="<<thread_;
 }
+
 void Thread::start(){
-    //caution: cannot swap these two lines
     e_state_ = Starting;
+    LOG_DEBUG << "starting";
     ::pthread_create(&thread_, NULL, &Thread::threadFunc, data_);
+    LOG_DEBUG << "started";
     e_state_ = Running;
 }
 
@@ -69,8 +76,10 @@ void Thread::join(){
 
 void* Thread::threadFunc(void *arg){
     auto* data= static_cast<Thread::ThreadData*>(arg);
+    //::prctl(PR_SET_NAME,data->title_.c_str());
     data->tid_ = detail::gettid();
     data->func_();
+    delete data; //FIXME: is there a elegant way?
     return nullptr;
 }
 

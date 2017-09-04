@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include "Time.h"
 
+#include <wz/Thread.h>
+
 Logger::FinishFunc Logger::g_finish = nullptr;
 int Logger::level = Logger::LogVerbose;
 
@@ -123,9 +125,10 @@ LogStream & LogStream::operator << (const std::string & s)
 Logger::Logger(const char * file, int lineno, int logLevel)
 {
 	stream() << logLevelStr[logLevel] <<
-        detail::formatTime(Time::now())
+        detail::formatTime(Time::now()) <<
+        " "<< Thread::currentThreadId() <<
         //Time::now().toString() 
-        << " "<<
+        " "<<
 #ifdef _WIN32
         ::strrchr(file,'\\')+1 
 #else 

@@ -2,10 +2,14 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <assert.h>
-int main (){
+#include <wz/Logging.h>
+void testState(){
     int foo=42;
+    struct dummy_s{} dummy_main;
+    LOG_DEBUG << "from main thread: " << &dummy_main;
     auto hello = [&foo](){
-        sleep(1);
+        dummy_s dummy;
+        LOG_DEBUG << "from hello thread: " << &dummy;
         foo=0;
         printf("hello\n");
     };
@@ -19,5 +23,9 @@ int main (){
     assert(!thread.started());
     assert(thread.finished());
     assert(foo==0);
+}
+
+int main (){
+    testState();
     return 0;
 }

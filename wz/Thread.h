@@ -3,7 +3,8 @@
 #include <functional>
 #include <pthread.h>
 #include <string>
-class Thread{
+#include <wz/Noncopyable.h>
+class Thread :Noncopyable{
 public:
     using Func=std::function<void()>;
     Thread(const Func&, const std::string&);
