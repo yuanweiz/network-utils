@@ -5,7 +5,7 @@ set (SRC
     Time.cpp System.cpp Multiplexer.cpp
     TimerManager.cpp
     Thread.cpp
-    Mutex.cpp Condition.cpp
+    Mutex.cpp Condition.cpp CountDownLatch.cpp
     )
 
 add_library(wz ${SRC})
