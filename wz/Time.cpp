@@ -42,7 +42,7 @@ Time Time::now(){
 }
 
 Time Time::fromNow(double sec){
-    int64_t lag = sec * detail::million;
+    int64_t lag = static_cast<int64_t>(sec * Time::million);
     return Time::now().add(lag);
 }
 

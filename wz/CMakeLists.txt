@@ -1,4 +1,4 @@
-project (network CXX)
+#project (network CXX)
 set (SRC 
     Logging.cpp Exception.cpp Buffer.cpp 
     Eventloop.cpp Channel.cpp Server.cpp 

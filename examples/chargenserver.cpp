@@ -74,17 +74,17 @@ void MyServer::onNewConnection(){
     pChan->setWriteCallback([this,fd](){onPeerWritable(fd);});
     pChan->ctx.i64[0]=0;
     pChan->ctx.i64[1]=Time::now().usecSinceEpoch();
-    auto res = peers_.insert (std::make_pair(fd,pChan));
+    auto res = peers_.insert (std::make_pair(fd,std::unique_ptr<Channel>(pChan)));
     assert(res.second);
 }
 
-static 
-LogStream& operator << (LogStream& ls,std::unordered_map<int,std::unique_ptr<Channel>>& mp ){
-    for (auto & p:mp){
-        ls<< p.first<<" ";
-    }
-    return ls;
-}
+//static 
+//LogStream& operator << (LogStream& ls,std::unordered_map<int,std::unique_ptr<Channel>>& mp ){
+//    for (auto & p:mp){
+//        ls<< p.first<<" ";
+//    }
+//    return ls;
+//}
 
 void MyServer::onPeerWritable(int fd){
     //LOG_TRACE << "onPeerWritable(), fd=" << fd <<" ";

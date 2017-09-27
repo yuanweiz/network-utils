@@ -55,7 +55,7 @@ void IdleServer::onNewConnection(){
         << " ,channel=" << pChan;
     pChan->enableRead();
     pChan->setReadCallback([this,fd](){peerConnection(fd);});
-    auto res = peers_.insert (std::make_pair(fd,pChan));
+    auto res = peers_.insert (std::make_pair(fd,std::unique_ptr<Channel>(pChan)));
     assert(res.second);
 }
 
