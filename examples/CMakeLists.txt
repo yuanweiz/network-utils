@@ -15,3 +15,6 @@ target_link_libraries (chargenserver wz)
 
 add_executable ( logging_profile logging_profile.cpp)
 target_link_libraries (logging_profile wz)
+
+add_executable ( backtrace backtrace.cpp)
+target_link_libraries (backtrace wz)
