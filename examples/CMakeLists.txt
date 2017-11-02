@@ -18,3 +18,6 @@ target_link_libraries (logging_profile wz)
 
 add_executable ( test_timer test_timer.cpp)
 target_link_libraries (test_timer wz)
+
+add_executable ( fs fs.cpp)
+target_link_libraries (fs wz)
