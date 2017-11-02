@@ -20,6 +20,124 @@ using namespace std;
 
 const int NullBlock = -1;
 
+// I wanna call it this way:
+// SomeType BlockSize =  1024;
+// BlockNo_t idx=1; // e.g. bitmap
+// size_t offset = BlockSize * idx 
+// SomeType2 BlocksPerGroup = 8192;
+// GroupNo_t grp = idx / BlocksPerGroup;
+// BlockNo_t idx2 = grp * idx + idx;
+enum class UnitType{Block,BlockGroup,Scalar};
+template<UnitType U1, UnitType U2, size_t F>
+struct UnitTrans{
+    size_t value()const{return F;}
+};
+
+template<class T>
+struct EnableOps{
+    bool operator < (const T&rhs)const{
+        return self().value()<rhs.value();
+    }
+    bool operator == (const T& rhs)const{
+        return self().value()==rhs.value();
+    }
+    bool operator > (const T&rhs)const{
+        return self().value()>rhs.value();
+    }
+    bool operator >= (const T& rhs)const{
+        return !( *this < rhs);
+    }
+    bool operator <= (const T& rhs)const{
+        return !( *this > rhs);
+    }
+    bool operator!=(const T& rhs)const{
+        return !(*this == rhs);
+    }
+    const T& self()const{
+        return * static_cast<const T*>(this);
+    }
+};
+template <UnitType U>
+struct Unit : EnableOps<Unit<U>>{
+public:
+    Unit(size_t v):
+        v_(v){}
+    //explicit operator size_t() {return v_;}
+    //is operator-() useful?
+    Unit operator + (const Unit& rhs)const{
+        return Unit(v_+rhs.v_);
+    } 
+
+    Unit operator + (size_t v)const{
+        return Unit(v_+v);
+    } 
+    Unit operator++ (int){
+        return Unit(v_++);
+    }
+    Unit& operator++ (){
+        ++v_;
+        return *this;
+    }
+    template <UnitType U2,size_t F>
+    Unit<U2> operator * ( UnitTrans<U,U2,F> )const{
+        return Unit<U2>(v_*F);
+    }
+
+    template <UnitType U2,size_t F>
+    Unit<U2> operator / ( UnitTrans<U2,U,F> )const{
+        return Unit<U2>(v_/F);
+    }
+
+    template <UnitType U2,size_t F>
+    Unit operator % ( UnitTrans<U2,U,F> )const{
+        return Unit(v_%F);
+    }
+
+    size_t operator % ( const Unit& rhs )const{
+        return v_%rhs.v_;
+    }
+    
+    size_t value() const{return v_;}
+private:
+    size_t v_;
+};
+
+//specialized
+template <> struct Unit<UnitType::Scalar>
+{
+    Unit(size_t v):v_(v){}
+    const static UnitType U=UnitType::Scalar;
+    template <UnitType U2,size_t F>
+    Unit<U2> operator * ( UnitTrans<U,U2,F> )const{
+        return Unit<U2>(v_*F);
+    }
+
+    template <UnitType U2,size_t F>
+    Unit<U2> operator / ( UnitTrans<U2,U,F> )const{
+        return Unit<U2>(v_/F);
+    }
+    operator size_t () const {return v_;}
+    Unit& operator=(size_t v){
+        v_=v;return *this;
+    }
+private:
+    size_t v_;
+};
+//UnitTrans<UnitType::BlockGroup, UnitType::Block, 1024> bpg;
+
+
+//template <UnitType U>
+//struct IndexType{
+//    IndexType(size_t v):
+//        v_(v){}
+//    explicit operator size_t() {return v_;}
+//private:
+//    size_t v_;
+//};
+
+using BlockNo_t = Unit<UnitType::Block>;
+using GroupNo_t = Unit<UnitType::BlockGroup>;
+
 template  <class T, class Base>
 class StrongType{
     public:
@@ -105,7 +223,7 @@ class LRUCache{
     BlockPtr getPage(int);
 };
 
-template <class T,size_t size>
+template <class T,size_t S>
 class ArrayView{
 public:
     explicit ArrayView(T*p):
@@ -116,10 +234,11 @@ public:
     //    return *this;
     //}
     T& operator[] (size_t idx){
-        assert(idx<size);
+        assert(idx<S);
         return ptr_[idx];
     }
     T* data(){return ptr_;}
+    size_t size() {return S;}
 private:
     T* const ptr_;
 };
@@ -132,14 +251,21 @@ public:
     //8096 superblock
     //8097 bitmap
     //...
-    static const size_t BlockSize = 1024;
-    static const size_t BlocksPerGroup = BlockSize*8;
-    static const size_t GroupSize = BlockSize * BlocksPerGroup;
-    using BlockView = ArrayView<uint8_t, BlockSize>;
-    using ImmutableBlockView = ArrayView<const uint8_t, BlockSize>;
+    
+    static const size_t kBlockSize = 1024;
+    static const size_t kBlocksPerGroup = kBlockSize*8;
+    static const size_t kGroupSize = kBlockSize * kBlocksPerGroup;
+    UnitTrans<UnitType::BlockGroup, UnitType::Block,  kBlockSize*8> BlocksPerGroup;
+    UnitTrans<UnitType::BlockGroup, UnitType::Scalar, kGroupSize> GroupSize;
+    UnitTrans<UnitType::Block, UnitType::Scalar, kBlockSize> BlockSize;
+    //static const size_t BlocksPerGroup = BlockSize*8;
+    //static const size_t GroupSize = BlockSize * BlocksPerGroup;
+    using Bytes = Unit<UnitType::Scalar>;
+    using BlockView = ArrayView<uint8_t, kBlockSize>;
+    using ImmutableBlockView = ArrayView<const uint8_t, kBlockSize>;
 
     explicit BlockManager(const string& filename)
-//        :file_(fopen(filename.c_str(),"rw"),&fclose)
+        :size_(kGroupSize)
     {
         const char * msg = nullptr;
         do{
@@ -151,8 +277,8 @@ public:
             if (fsize < -1){
                 msg = "can't get size of the file";break;
             }
-            if (static_cast<size_t>(fsize) < GroupSize) 
-                fsize = GroupSize;
+            if (static_cast<size_t>(fsize) < kGroupSize) 
+                fsize = kGroupSize;
             int ret = ::ftruncate(fd_, fsize);
             if (ret<0){
                 msg = "failed to resize file"; break;
@@ -176,7 +302,8 @@ public:
         // try alloc blocks
         // store in vector
     }
-    size_t allocBlock(size_t hint){
+    //size_t allocBlock(size_t hint){
+    BlockNo_t allocBlock(BlockNo_t hint){
 
         //  byte byte byte
         // |----|----|----|---bitmap-------------|
@@ -186,9 +313,9 @@ public:
         // |
         // `----> blockGroupBase
         
-        size_t grp = getGroupByBlock(hint);
-        auto getBitmapBlockView = [this] (size_t g){
-            size_t bmp = g* BlocksPerGroup+1;
+        auto grp = getGroupByBlock(hint);
+        auto getBitmapBlockView = [this] (GroupNo_t g){
+            auto bmp = g*BlocksPerGroup+1;
             uint8_t * base = static_cast<uint8_t*>(getBasePointer(bmp));
             return BlockView(base);
         };
@@ -200,14 +327,15 @@ public:
         const auto blockNoInGrp = hint % BlocksPerGroup;
 
         auto off = allocBlockWithinGroup(view, blockNoInGrp);
-        if (off!=0)
+        const BlockNo_t nullBlock =0;
+        if (off!=nullBlock)
             return blockGroupBase + off;
-        size_t tot_grp = ngroups();
-        for (size_t i=1;i<tot_grp;++i){
-            auto idx = (grp + i) % tot_grp;
+        auto tot_grp = ngroups();
+        for (GroupNo_t i=1;i<tot_grp;++i){
+            GroupNo_t idx = (grp + i) % tot_grp;
             auto v = getBitmapBlockView(idx);
             off = allocBlockWithinGroup(v,0);
-            if (off){
+            if (off.value()){
                 return off + idx* BlocksPerGroup;
             }
         }
@@ -216,42 +344,48 @@ public:
         resize(tot_grp+1);
         off = allocBlockWithinGroup(getBitmapBlockView(tot_grp),0);
         assert(off!=0);
-        return off + tot_grp * BlocksPerGroup;
+        return tot_grp * BlocksPerGroup + off;
     }
-    void deleteBlock(size_t block){
+    void deleteBlock(BlockNo_t block){
         auto bmpblk = getBitmapBlockByBlock(block);
-        BitmapView bmp(getBasePointer(bmpblk), BlocksPerGroup);
+        BitmapView bmp(getBasePointer(bmpblk), BlocksPerGroup.value());
         auto posInGroup = block % BlocksPerGroup;
-        bmp.setZero(posInGroup);
+        bmp.setZero(posInGroup.value());
     }
     BlockPtr getBlock(int);
     size_t size(){return size_;}
 
     void test(){
-        uint8_t * p = static_cast<uint8_t*> (data_)+BlockSize;
+        BlockNo_t pg=0;
+        for (int i=0;i<10000;++i){
+            pg = allocBlock(pg);
+            printf("%lu,",pg.value());
+        }
+    }
+    void test1(){
+        uint8_t * p = static_cast<uint8_t*> (data_)+kBlockSize;
         uint8_t bak = *p;
-        size_t pg = allocBlock(0);
+        auto pg = allocBlock(0);
         assert(pg==2);
         *p=0xff;
         pg = allocBlock(pg);
         assert(pg==8);
-        std::fill(p+1,p+BlockSize,1);
+        std::fill(p+1,p+kBlockSize,1);
         pg = allocBlock(pg);
         assert(pg==9);
         pg = allocBlock(pg);
         assert(pg==10);
-        std::fill(p,p+BlockSize,0xff);
+        std::fill(p,p+kBlockSize,0xff);
         pg = allocBlock(pg);
-        printf("pg=%lu, BlocksPerGroup=%lu\n",pg,BlocksPerGroup);
-        assert(pg==BlocksPerGroup+2);
+        printf("pg=%lu, BlocksPerGroup=%lu\n",pg.value(),BlocksPerGroup.value());
+        //assert(pg==BlocksPerGroup+2);
         *p=bak;
     }
 private:
-    size_t allocBlockWithinGroup(BlockView bmpBlkView, size_t blockNoInGrp){
-
-        const auto offset = blockNoInGrp /8;
+    BlockNo_t allocBlockWithinGroup(BlockView bmpBlkView, BlockNo_t blockNoInGrp){
+        const auto offset = blockNoInGrp.value() /8;
         auto & view = bmpBlkView;
-        BitmapView bitmap(view.data(), BlocksPerGroup);
+        BitmapView bitmap(view.data(), BlocksPerGroup.value());
         auto findZeroBit = [] (uint8_t b)->size_t{
             b=~b;
             for (size_t i=0;i<8;++i){
@@ -271,8 +405,8 @@ private:
 
         //if nearby 8 blocks are all occupied, search for a 
         //contiguous 8-block free space
-        for (size_t i=0;i<BlockSize;++i){
-            auto idx = (i+offset)%BlockSize;
+        for (size_t i=0;i<BlockSize.value();++i){
+            auto idx = (i+offset)%BlockSize.value();
             if ( view[idx]==0 ){
                 bitmap.setOne( idx*8);
                 return idx*8;
@@ -280,8 +414,8 @@ private:
         }
 
         //oops, have to start over, fit it into a nearby 8-block trunk
-        for (size_t i=0;i<BlockSize;++i){
-            auto idx = (i+offset)%BlockSize;
+        for (size_t i=0;i<BlockSize.value();++i){
+            auto idx = (i+offset)%BlockSize.value();
             if ( view[idx]!=0xff ){
                 auto j = findZeroBit(view[idx]);
                 bitmap.setOne( idx*8+j);
@@ -291,23 +425,24 @@ private:
         //the whole block is filled, failed to alloc
         return 0;
     }
-    static size_t getGroupByBlock(size_t block){
+    //static size_t getGroupByBlock(BlockNo_t block){
+    GroupNo_t getGroupByBlock(BlockNo_t block){
         return block / BlocksPerGroup;
     }
-    static size_t getBitmapBlockByBlock(size_t block){
+    BlockNo_t getBitmapBlockByBlock(BlockNo_t block){
         auto grp = getGroupByBlock(block);
         return grp * BlocksPerGroup + 1;
     }
-    void * getBasePointer(size_t block){
-        return static_cast<char*>( data_) + block * BlockSize;
+    void * getBasePointer(BlockNo_t block){
+        return static_cast<char*>( data_) + (block * BlockSize);
     }
-    size_t nblocks()const{
+    BlockNo_t nblocks()const{
         return size_ / BlockSize;
     }
-    size_t ngroups()const {
+    GroupNo_t ngroups()const {
         return size_ / GroupSize;
     }
-    void resize(size_t group){
+    void resize(GroupNo_t group){
         auto oldCnt=ngroups();
         if (oldCnt >= group){
             return;
@@ -320,18 +455,20 @@ private:
         }
     }
 
-    void formatBlockGroup(int group){
+    void formatBlockGroup(GroupNo_t group){
         char * p = static_cast<char*>(data_) ;
-        p = p + group * GroupSize + BlockSize;
-        bzero(p, BlockSize);
-        BitmapView bitmap(p, BlocksPerGroup);
+        BlockNo_t bmpblk = 1;
+        p = p + (group * GroupSize + bmpblk * BlockSize );
+        bzero(p, BlockSize.value());
+        BitmapView bitmap(p, BlocksPerGroup.value());
         bitmap.setOne(0); //super block
         bitmap.setOne(1); //bitmap block itself
     }
 
     int fd_;
     void * data_;
-    size_t size_;
+    //size_t size_;
+    Bytes size_;
 
     //unique_ptr<FILE, decltype(&fclose)> file_;
     //class FileSystemDesc{};
@@ -476,10 +613,20 @@ private:
 
 
 */
+
+
+
 int main (){
     BlockManager pager("/home/ywz/test.db");
-
     pager.test();
+    //BlockNo_t x(2049);
+    //GroupNo_t y(2);
+    //auto i = x/bpg;
+    //auto j = x%bpg;
+    //auto k = j*bpg+i;
+    //printf("%lu,%lu,%lu\n",i.value(),j.value(),k.value());
+
+    //pager.test();
     //PageNo_t t;
     //t.StrongType<unsigned long, PageNo_t>::operator=(3);
     //BlockPtr ptr = pager.getPage(1);
