@@ -1,6 +1,7 @@
 #ifndef __BLOCK_MGR_H
 #define __BLOCK_MGR_H
 #include <string>
+#include <functional>
 #include "Traits.h"
 #include "BitmapView.h"
 #include "ArrayView.h"
@@ -17,6 +18,7 @@ public:
     static const size_t kBlockSize = 1024;
     static const size_t kBlocksPerGroup = kBlockSize*8;
     static const size_t kGroupSize = kBlockSize * kBlocksPerGroup;
+    using Callback = std::function<void(BlockNo_t)>;
     using BPG_t = 
         UnitTrans<UnitType::BlockGroup, UnitType::Block,  BlockManager::kBlockSize*8>;
     using GS_t = 
@@ -38,6 +40,7 @@ public:
     void format();
     
     BlockNo_t allocBlock(BlockNo_t hint);
+    BlockNo_t allocZeroedBlock(BlockNo_t hint);
     void deleteBlock(BlockNo_t );
 
     class BlockPtr{
@@ -80,8 +83,18 @@ public:
     BlockPtr getBlock(BlockNo_t blk){
         return BlockPtr(this,blk);
     }
+    void setAllocBlockCallback(const Callback&cb){allocBlockCallback_=cb;}
+    void setDeleteBlockCallback(const Callback&cb){deleteBlockCallback_=cb;}
     size_t size(){return size_;}
 private:
+    BlockNo_t doAllocBlock(BlockNo_t);
+    void doDeleteBlock(BlockNo_t);
+    void onAllocBlock(BlockNo_t blk){
+        if (allocBlockCallback_) allocBlockCallback_(blk);
+    }
+    void onDeleteBlock(BlockNo_t blk){
+        if (deleteBlockCallback_) deleteBlockCallback_(blk);
+    }
     BlockNo_t allocBlockWithinGroup(BlockView , BlockNo_t );
     GroupNo_t getGroupByBlock(BlockNo_t block){
         return block / BlocksPerGroup;
@@ -104,6 +117,7 @@ private:
     void formatBlockGroup(GroupNo_t group);
     int fd_;
     void * data_;
+    Callback allocBlockCallback_, deleteBlockCallback_;
     Bytes size_;
 
 };

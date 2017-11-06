@@ -33,12 +33,13 @@ BlockManager::BlockManager(const string& filename)
     }while(false);
     throw Exception(msg);
 }
-void BlockManager::deleteBlock(BlockNo_t block){
+void BlockManager::doDeleteBlock(BlockNo_t block){
     auto bmpblk = getBitmapBlockByBlock(block);
     BitmapView bmp(getBasePointer(bmpblk), BlocksPerGroup.value());
     auto posInGroup = block % BlocksPerGroup;
     bmp.setZero(posInGroup.value());
 }
+
 BlockNo_t BlockManager::allocBlockWithinGroup(BlockView bmpBlkView, BlockNo_t blockNoInGrp){
     const auto offset = blockNoInGrp.value() /8;
     auto & view = bmpBlkView;
@@ -74,8 +75,18 @@ BlockNo_t BlockManager::allocBlockWithinGroup(BlockView bmpBlkView, BlockNo_t bl
     //the whole block is filled, failed to alloc
     return 0;
 }
-
 BlockNo_t BlockManager::allocBlock(BlockNo_t hint){
+    auto ret=doAllocBlock(hint);
+    if (ret.value()!=0){
+        onAllocBlock(ret);
+    }
+    return ret;
+}
+void BlockManager::deleteBlock(BlockNo_t hint){
+    doDeleteBlock(hint);
+    onDeleteBlock(hint);
+}
+BlockNo_t BlockManager::doAllocBlock(BlockNo_t hint){
 
     //  byte byte byte
     // |----|----|----|---bitmap-------------|
@@ -117,6 +128,13 @@ BlockNo_t BlockManager::allocBlock(BlockNo_t hint){
     off = allocBlockWithinGroup(getBitmapBlockView(tot_grp),0);
     assert(off!=0);
     return tot_grp * BlocksPerGroup + off;
+}
+
+BlockNo_t BlockManager::allocZeroedBlock(BlockNo_t hint){
+    auto blk = allocBlock(hint);
+    auto ptr = getBlock(blk).getMutablePtr();
+    bzero(ptr,kBlockSize);
+    return blk;
 }
 
 void BlockManager::formatBlockGroup(GroupNo_t group){
@@ -181,31 +199,3 @@ void BlockManager::format(){
     }while(false);
     throw Exception(msg);
 }
-/*
-    void test(){
-        BlockNo_t pg=0;
-        for (int i=0;i<10000;++i){
-            pg = allocBlock(pg);
-            printf("%lu,",pg.value());
-        }
-    }
-    void test1(){
-        uint8_t * p = static_cast<uint8_t*> (data_)+kBlockSize;
-        uint8_t bak = *p;
-        auto pg = allocBlock(0);
-        assert(pg==2);
-        *p=0xff;
-        pg = allocBlock(pg);
-        assert(pg==8);
-        std::fill(p+1,p+kBlockSize,1);
-        pg = allocBlock(pg);
-        assert(pg==9);
-        pg = allocBlock(pg);
-        assert(pg==10);
-        std::fill(p,p+kBlockSize,0xff);
-        pg = allocBlock(pg);
-        printf("pg=%lu, BlocksPerGroup=%lu\n",pg.value(),BlocksPerGroup.value());
-        //assert(pg==BlocksPerGroup+2);
-        *p=bak;
-    }
-*/

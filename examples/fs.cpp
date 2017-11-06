@@ -10,8 +10,10 @@
 #include <string.h>
 #include <assert.h>
 #include "BlockManager.h"
+#include <algorithm>
 #include <wz/Exception.h>
 #include <wz/Logging.h>
+#include <set>
 using namespace std;
 
 using BlockPtr = BlockManager::BlockPtr;
@@ -207,10 +209,10 @@ public:
     union Inode{
         // a foolish parody for ext2
         struct inode_s{
-            int nblocks;
-            int dataBlock[15];
-            int indirect2;
-            int indirect3;
+            uint32_t nblocks;
+            uint32_t dataBlock[15];
+            uint32_t indirect2;
+            uint32_t indirect3;
             uint8_t fnamelen;
             char fname[1];
         }inode;
@@ -254,6 +256,7 @@ public:
             FileSystem* fs_; //pointer to owner
             InodeNo_t inode_;
     };
+    void removeFile(FileDesc&);
     FileDesc openFile(const string& fname){
         if (fname.size()> kMaxFilenameLen)
             throw Exception("fname too long");
@@ -366,25 +369,319 @@ private:
     size_t nblocks(InodeNo_t inode){
         return getInode(inode).inode.nblocks;
     }
-    void truncate(InodeNo_t i,BlockNo_t sz){
-        auto & inode=getInode(i).inode;
+
+    struct IndirectBlock{
+        uint32_t blocks[256];
+    };
+    template <typename T>
+    T& block_cast(BlockNo_t blk){
+        auto ptr= mgr_->getBlock(blk).getMutablePtr();
+        return *reinterpret_cast<T*>(ptr);
+    }
+    void truncate(InodeNo_t ino,BlockNo_t sz){
+        auto & inode=getInode(ino).inode;
         auto & cnt=inode.nblocks;
-        auto num_to_alloc = sz.value()-cnt;
-        BlockNo_t hint=(cnt==0?0: inode.dataBlock[cnt-1]);
-        for (size_t j=0;j<num_to_alloc;++j){
-            if (cnt<15){
-                hint=mgr_->allocBlock(hint);
-                inode.dataBlock[cnt++] = hint.value();
-            }
-            else {
-                assert(false);
+        //const size_t kIndirect3 = kIndirect2*kIndirect2;
+        const size_t size = sz.value();
+        if (cnt > size){
+            //shorten this file
+            PostOrderIter iter(size);
+            while (false){
+                iter.advance();
+                BlockNo_t blk=iter.getBlock();
+                assert(blk.value()!=0);
+                mgr_->deleteBlock(blk);
             }
         }
+        else {
+            //enlarge the file
+            // harder
+            PreOrderIter iter(cnt);
+            while (false){
+                iter.advance();
+                BlockNo_t blk=iter.getBlock();
+                assert(blk.value()==0);
+            }
+        }
+    }
+    //template<bool postorder>
+    struct TreeWalker{ //post order
+        using BlockNo_t = FileSystem::BlockNo_t;
+        TreeWalker(Inode::inode_s * inode,FileSystem* fs,uint32_t blk /*logical block*/)
+            :blk_(blk),fs_(fs),inode_(*inode)
+        {
+            if (blk< kDirect){
+                size_=1;
+                stack_[0]=inode_.dataBlock[blk];
+            }
+        }
+        uint32_t value(){
+            assert(size_!=0);
+            if (size_==1){
+                switch ( stack_[0]){
+                    case kIndirect:
+                        return inode_.indirect2;
+                    case kIndirect+1:
+                        return inode_.indirect3;
+                    default:
+                        return inode_.dataBlock[top()];
+                }
+            }
+            else if (size_ == 2){
+                auto blk =stack_[0] == kDirect? inode_.indirect2: inode_.indirect3;
+                auto indir = fs_->block_cast<FileSystem::IndirectBlock>(blk);
+                return indir.blocks[stack_[1]];
+            }
+            else {
+                assert(size_==3);
+                assert(stack_[0]==kDirect+1);
+                auto indir1 = fs_->block_cast<FileSystem::IndirectBlock>(inode_.indirect3);
+                auto indir2 = fs_->block_cast<FileSystem::IndirectBlock>(indir1.blocks[stack_[1]]);
+                return indir2.blocks[stack_[2]];
+            }
+        }
+        void advance(){
+            if (size_==1){
+                if (top()+1 < kDirect){
+                    ++top();
+                    return;
+                }
+                else if (top()+1 == kDirect){
+                    ++top();
+                    push(0);
+                    return;
+                }
+                else {
+                    assert(top()==kDirect);
+                    top()=kDirect+1;
+                    push(0);push(0);
+                    return;
+                }
+            }
+            else if (size_==2){
+                if (stack_[0]==kDirect){
+                    if (++top()==kIndirect){
+                        pop();return;
+                    }
+                }
+                else {
+                    assert(stack_[0]==kDirect+1);
+                    if(++top()==kIndirect){
+                        pop();
+                    }
+                    else {
+                        push(0);
+                    }
+                    return;
+                }
+            }
+            else {
+                assert(size_==3);
+                if (++top()==kIndirect){
+                    pop();
+                }
+                return;
+            }
+            
+        }
+        uint32_t&top(){
+            return stack_[size_-1];
+        }
+        void push(uint32_t val){
+            stack_[size_++]=val;
+        }
+        uint32_t pop(){
+            return stack_[--size_];
+        }
+        uint32_t stack_[3];
+        uint32_t size_;
+        uint32_t blk_;
+        FileSystem* fs_;
+        Inode::inode_s &inode_;
+        static const uint32_t kDirect = sizeof(inode_.dataBlock)/ sizeof(uint32_t);
+        static const uint32_t kIndirect = 1024;
+    };
+    struct IterBase{
+        IterBase(uint32_t=0){
+            bzero(stack_,sizeof(stack_));
+            size_=1;
+        }
+        BlockNo_t getBlock(){return 0;}
+        void push(uint32_t v){
+            stack_[size_++]=v;
+        }
+        uint32_t& top(){
+            return stack_[size_-1];
+        }
+        uint32_t pop(){
+            assert(size_>0);
+            return stack_[--size_];
+        }
+        void dump()const{
+            for (size_t i=0;i<size_;++i){
+                printf("%d,",stack_[i]);
+            }
+            puts("");
+        }
+        bool rightSibling(){
+            if (size_==1){
+                ++top();return true;
+            }
+            else if (top()==3){
+                return false;
+            }
+            else {
+                ++top();
+                return true;
+            }
+        }
+        static const size_t kDirect=15;
+        uint32_t stack_[3];
+        uint32_t size_;
+    };
+    struct PostOrderIter : IterBase{
+        using IterBase::dump;
+        PostOrderIter(size_t v):IterBase(v){}
+        void advance(){
+            if (!rightSibling()){
+                pop();
+                return;
+            }
+            down();
+        }
+        void down(){
+            if(size_ == 1 && top() <15){
+                return;
+            }
+            else {
+                while (size_<3) push(0);
+            }
+        }
+    };
+    struct PreOrderIter:IterBase{
+        using IterBase::dump;
+        PreOrderIter(size_t v):IterBase(v){}
+        void advance(){
+            if (leftmostChild()){
+                return;
+            }
+            while (!rightSibling()){
+                pop();
+            }
+        }
+        bool leftmostChild(){
+            if (size_ == 1 && top()<15){
+                return false;
+            }
+            if (size_==3)return false;
+            push(0);
+            return true;
+        }
+    };
+    void releaseDataBlock(uint32_t * block, int level){
+        if(*block==0)return;
+        if (level>1){
+            auto & indir=block_cast<IndirectBlock>(*block);
+            for (auto & b:indir.blocks){
+                releaseDataBlock(&b,level-1);
+            }
+        }
+        mgr_->deleteBlock(*block);
+        *block=0;
+    }
+    void releaseDirect(uint32_t * block){
+        releaseDataBlock(block,1);
+    }
+    void releaseIndirect2(uint32_t* block){
+        releaseDataBlock(block,2);
+    }
+    void releaseIndirect3(uint32_t*block){
+        releaseDataBlock(block,3);
+    }
+
+    BlockNo_t allocDataBlockIndir2(BlockNo_t hint, uint32_t* indir2){
+        if (*indir2==0){
+            hint = mgr_->allocZeroedBlock(hint);
+            *indir2 = hint.value();
+        }
+        auto& indirblk = block_cast<IndirectBlock>(*indir2);
+        auto b = std::begin(indirblk.blocks);
+        auto e = std::end(indirblk.blocks);
+        auto pi=std::find(b,e,0);
+        assert(e!=pi);
+        hint=mgr_->allocBlock(hint);
+        *pi = hint.value();
+        return hint;
+    }
+
+    BlockNo_t allocDataBlockIndir3(BlockNo_t hint, uint32_t* indir3){
+        if (*indir3==0){
+            hint = mgr_->allocZeroedBlock(hint);
+            *indir3 = hint.value();
+        }
+        auto& indirblk = block_cast<IndirectBlock>(*indir3);
+        auto b = std::begin(indirblk.blocks);
+        auto e = std::end(indirblk.blocks);
+        auto pi=std::find(b,e,0);
+        return allocDataBlockIndir2(hint,pi);
     }
     vector<BlockNo_t> inodeBlocks_;
     BlockManager* const mgr_;
 };
 
+class BlockManagerTest : public BlockManager{
+public:
+    BlockManagerTest(const string& filename):
+        BlockManager(filename){}
+    void test(){
+        testNoDupAlloc();
+    }
+    void testNoDupAlloc(){
+        BlockNo_t blk=0;
+        for (int i=0;i<1024;++i){
+            blk = BlockManager::allocBlock(blk);
+            assert(set_.find(blk.value()) == set_.end());
+            set_.insert(blk.value());
+        }
+    }
+private:
+    set<size_t> set_;
+    size_t alloc_cnt_ =0;
+    size_t free_cnt_ =0;
+};
+
+class FileSystemTest{
+public:
+    FileSystemTest():
+        disk_("/home/ywz/test.db"),
+        fs_(&disk_)
+    {
+        disk_.setAllocBlockCallback
+            ([this](BlockNo_t blk){onAlloc(blk);});
+        disk_.setDeleteBlockCallback
+            ([this](BlockNo_t blk){onDelete(blk);});
+    }
+    void test(){
+        auto file = fs_.openFile("foo");
+        file.truncate(2048);
+        file.truncate(0);
+        fs_.removeFile(file);
+        assert(blocks_.empty());
+    }
+private:
+    using BlockNo_t = FileSystem::BlockNo_t;
+    void onAlloc(BlockNo_t blk){
+        assert(blocks_.find(blk)==blocks_.end());
+        blocks_.insert(blk);
+    }
+    void onDelete(BlockNo_t blk){
+        assert(blocks_.find(blk)!=blocks_.end());
+        blocks_.erase(blk);
+    }
+    set<BlockNo_t> blocks_;
+    BlockManager disk_;
+    FileSystem fs_;
+};
 
 int main (){
     BlockManager disk("/home/ywz/test.db");
@@ -392,7 +689,9 @@ int main (){
     //disk.test();
     FileSystem fs(&disk);
     fs.mkfs();
-    auto file=fs.openFile("foo");
-    file.truncate(13);
+    //auto file=fs.openFile("foo");
+    //file.truncate(13);
+    //
+
     return 0;
 }
