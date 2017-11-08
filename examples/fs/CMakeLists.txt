@@ -1,0 +1,5 @@
+add_library ( fs FileSystem.cpp BlockManager.cpp FileBlockAllocator.cpp InodeAllocator.cpp BitmapView.cpp)
+add_executable(test test.cpp)
+add_executable(main main.cpp )
+target_link_libraries ( main fs wz)
+target_link_libraries ( test fs wz)

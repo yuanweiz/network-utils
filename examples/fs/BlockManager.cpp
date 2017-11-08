@@ -6,8 +6,6 @@
 #include <wz/Exception.h>
 using namespace std;
 using Self=BlockManager;
-using BlockNo_t = Self::BlockNo_t;
-using GroupNo_t = Self::GroupNo_t;
 Self::BPG_t Self::BlocksPerGroup{};
 Self::GS_t Self::GroupSize{};
 Self::BS_t Self::BlockSize{};

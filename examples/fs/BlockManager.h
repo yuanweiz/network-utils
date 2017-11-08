@@ -3,6 +3,7 @@
 #include <string>
 #include <functional>
 #include "Traits.h"
+#include "Types.h"
 #include "BitmapView.h"
 #include "ArrayView.h"
 class BlockManager{
@@ -13,8 +14,6 @@ public:
     //8096 superblock
     //8097 bitmap
     //...
-    using BlockNo_t = Unit<UnitType::Block>;
-    using GroupNo_t = Unit<UnitType::BlockGroup>;
     static const size_t kBlockSize = 1024;
     static const size_t kBlocksPerGroup = kBlockSize*8;
     static const size_t kGroupSize = kBlockSize * kBlocksPerGroup;
@@ -45,7 +44,6 @@ public:
 
     class BlockPtr{
     public:
-        using BlockNo_t = BlockManager::BlockNo_t;
         BlockPtr()=delete;
         static int size();
         BlockPtr(const BlockPtr& rhs);
@@ -86,6 +84,11 @@ public:
     void setAllocBlockCallback(const Callback&cb){allocBlockCallback_=cb;}
     void setDeleteBlockCallback(const Callback&cb){deleteBlockCallback_=cb;}
     size_t size(){return size_;}
+    template <typename T>
+    T& block_cast(BlockNo_t blk){
+        auto ptr= getBlock(blk).getMutablePtr();
+        return *reinterpret_cast<T*>(ptr);
+    }
 private:
     BlockNo_t doAllocBlock(BlockNo_t);
     void doDeleteBlock(BlockNo_t);
