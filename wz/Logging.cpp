@@ -10,6 +10,7 @@ Logger::FinishFunc Logger::g_finish = nullptr;
 int Logger::level = Logger::LogVerbose;
 
 const char* logLevelStr[]{
+    "[FATAL ]",
     "[ERROR ]",
 	"[TRACE ]",
 	"[INFO  ]",
@@ -18,7 +19,7 @@ const char* logLevelStr[]{
 };
 
 
-void* LogStream::data(){
+const char* LogStream::data(){
     return buffer_.peek();
 }
 
@@ -135,12 +136,17 @@ Logger::Logger(const char * file, int lineno, int logLevel)
 }
 
 Logger::~Logger(){
-    stream() << "\n";
+    stream() << '\n' << '\0';
     if (g_finish){
         g_finish(stream());
     }
     else {
         //default cleanup func
-        ::write(1,stream().data(),stream().size());
+        printf("%s",stream().data());
+        //::write(1,stream().data(),stream().size());
+    }
+    if (this->level == LogFatal){
+        ::fsync(1);
+        abort();
     }
 }

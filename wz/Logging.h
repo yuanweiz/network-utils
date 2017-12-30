@@ -19,7 +19,7 @@ public:
 	LogStream & operator << (const void* str) ;
 	LogStream & operator << (char ch) ;
 	LogStream & operator << (const std::string & s) ;
-    void * data();
+    const char * data();
     size_t size();
 private:
     template < class T> void printIntegral(T);
@@ -31,7 +31,7 @@ public:
 	Logger(const char * file, int lineno, int logLevel);
 	static void setLevel(int l) { level = l; }
 	static int getLevel() { return level; }
-	enum {LogError,LogTrace,LogInfo, LogDebug, LogVerbose};
+	enum {LogFatal, LogError,LogTrace,LogInfo, LogDebug, LogVerbose};
 	static int level;
     ~Logger();
     LogStream& stream(){return stream_;}
@@ -41,6 +41,7 @@ private:
     LogStream stream_;
 };
 
+#define LOG_FATAL Logger(__FILE__, __LINE__, Logger::LogFatal).stream()
 #define LOG_ERROR Logger(__FILE__, __LINE__, Logger::LogError).stream()
 #define LOG_DEBUG if (Logger::getLevel() >= Logger::LogDebug)\
 	Logger(__FILE__, __LINE__, Logger::LogDebug).stream()

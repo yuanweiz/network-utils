@@ -3,7 +3,7 @@ set (SRC
     Logging.cpp Exception.cpp Buffer.cpp 
     Eventloop.cpp Channel.cpp Server.cpp 
     Time.cpp System.cpp Multiplexer.cpp
-    TimerManager.cpp
+    TimerManager.cpp Thread.cpp
     )
 
 add_library(wz ${SRC})

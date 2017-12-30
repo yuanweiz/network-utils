@@ -26,12 +26,15 @@ public:
 private: 
     bool polling_; //for debug use
     bool running_;
+    void wakeUp();
     
     //pollfds: used by fillPollfds() to reduce construction/destruction
     //of std::vector
+    int pipefd_[2];
     std::vector<Func> funcs_;
     std::unique_ptr<Multiplexer> multiplexer_;
     std::unique_ptr<TimerManager> timerManager_;
+    std::unique_ptr<Channel> wakeupChannel_;
 };
 
 

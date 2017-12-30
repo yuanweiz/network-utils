@@ -1,0 +1,5 @@
+foreach( filename thread_lifetime timer_test eventloop_test)
+    add_executable( ${filename} ${filename}.cpp)
+    target_link_libraries( ${filename} wz ${GTEST_LIBRARIES} pthread)
+    add_test ( ${filename} ${filename})
+endforeach()

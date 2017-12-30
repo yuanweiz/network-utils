@@ -75,6 +75,7 @@ void MyServer::onNewConnection(){
     pChan->ctx.i64[0]=0;
     pChan->ctx.i64[1]=Time::now().usecSinceEpoch();
     auto res = peers_.insert (std::make_pair(fd,std::unique_ptr<Channel>(pChan)));
+    (void)res;
     assert(res.second);
 }
 

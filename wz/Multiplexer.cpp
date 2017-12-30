@@ -22,6 +22,7 @@ void Multiplexer::poll(std::vector<Channel*>* _active){
     auto & active = * _active;
     //fillPollfds();
     assert(channels_.size() == pollfds_.size());
+   // __asm__("int3");
     int num = ::poll(pollfds_.data(), pollfds_.size(), -1);
     if (num <0){
         //handle error;

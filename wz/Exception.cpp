@@ -1,27 +1,5 @@
 #include "Exception.h"
 #include <assert.h>
-#ifdef _WIN32
-#include <Windows.h>
-#include <DbgHelp.h>
-void backTrace(std::string & callstack_) {
-	auto thisProcess = GetCurrentProcess();
-	void * stack[200];
-	auto nframes = ::CaptureStackBackTrace(0, sizeof(stack), stack, NULL);
-	assert(nframes <= sizeof(stack));
-	const int maxNameLen = 255;
-	SymInitialize(thisProcess, NULL, TRUE);
-	SYMBOL_INFO * info = (SYMBOL_INFO*)calloc(sizeof(SYMBOL_INFO) + 1 + maxNameLen,1);
-	info->MaxNameLen = maxNameLen;
-	info->SizeOfStruct = sizeof(SYMBOL_INFO);
-	for (size_t i = 0;i < nframes;++i) {
-		//reuse the same SYMBOL_INFO struct
-		SymFromAddr(thisProcess, (DWORD64)stack/*[nframes-1-i]*/[i], 0, info);
-		callstack_.push_back('\n');
-		callstack_.append(info->Name);
-	}
-	free(info);
-}
-#else // for linux
 #include <execinfo.h>
 void backTrace(std::string & callstack_)
 {
@@ -40,7 +18,6 @@ void backTrace(std::string & callstack_)
 		free(strings);
 	}
 }
-#endif
 Exception::Exception(const char * msg):callstack_(msg) {
 	backTrace(callstack_);
 }

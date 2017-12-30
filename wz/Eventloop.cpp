@@ -16,10 +16,24 @@ Eventloop::Eventloop()
 {
     polling_=false;
     running_=true;
+    if(pipe(pipefd_)){
+        LOG_FATAL << "pipe() failed";
+    }
+    auto * pChan =  new Channel(this,pipefd_[0]);
+    wakeupChannel_.reset(pChan);
+    wakeupChannel_->enableRead();
+    wakeupChannel_->setReadCallback([pChan](){
+            char buf;
+            ::read(pChan->fd(),&buf,1);
+            });
 }
-
+void Eventloop::wakeUp(){
+    char c;
+    ::write(pipefd_[1],&c,1);
+}
 void Eventloop::quit(){
     running_=false;
+    wakeUp();
 }
 
 TimerUUID Eventloop::runAfter(double interval, const Func & func){
@@ -33,6 +47,8 @@ void Eventloop::cancelTimer(const TimerUUID & uuid){
 }
 
 Eventloop::~Eventloop(){
+    close(pipefd_[0]);
+    close(pipefd_[1]);
 }
 void Eventloop::add(Channel*ch){
     multiplexer_->add(ch);
@@ -56,7 +72,9 @@ void Eventloop::loop(){
         for ( auto * ch : active){
             ch->handleEvents();
         }
-        for(auto& f: funcs_){
+        std::vector<Func> tmp;
+        std::swap(funcs_,tmp);
+        for(auto& f: tmp){
             f();
         }
     }

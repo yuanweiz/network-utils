@@ -14,6 +14,7 @@ public:
     void add(Channel*);
     void unregister(Channel*);
     void update(Channel*);
+    size_t size()const{return pollfds_.size();}
 private:
     void fillPollfds();
     std::vector<struct pollfd> pollfds_;

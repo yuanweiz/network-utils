@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 2.6)
 project (wzlib CXX)
 
 include_directories (${PROJECT_SOURCE_DIR})
@@ -7,5 +8,17 @@ set (CMAKE_CXX_COMPILER "g++")
 set (CMAKE_CXX_FLAGS_DEBUG "-O0 -g3")
 set (CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
 
-add_subdirectory ( examples)
 add_subdirectory ( wz)
+if (BUILD_EXAMPLES)
+add_subdirectory ( examples)
+endif()
+
+message(STATUS "CXX_FLAGS = " ${CMAKE_CXX_FLAGS} " " ${CMAKE_CXX_FLAGS_${BUILD_TYPE}})
+
+enable_testing()
+find_package(GTest )
+find_package(Threads)
+if (GTEST_FOUND)
+    include_directories(${GTEST_INCLUDE_DIRS})
+    add_subdirectory(test)
+endif()
